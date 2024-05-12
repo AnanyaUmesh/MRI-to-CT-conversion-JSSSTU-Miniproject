@@ -52,7 +52,7 @@ class Solver(object):
         return preds
 
     def init(self):
-        self.sess.run(tf.global_variables_initializer())
+        pass
 
     def evaluate(self, gts, preds, masks, is_train=True):
         gts_ = inv_transform(gts, is_squeeze=False, dtype=np.float32) * masks
