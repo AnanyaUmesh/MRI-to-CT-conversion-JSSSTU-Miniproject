@@ -3,7 +3,7 @@ import sys
 import logging
 import argparse
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt; plt.rcdefaults()
 import tensorflow as tf
 from datetime import datetime
 
@@ -15,10 +15,10 @@ parser = argparse.ArgumentParser(description='main')
 parser.add_argument('--gpu_index', dest='gpu_index', default='0', help='gpu index if you have multiple gpus, default: 0')
 parser.add_argument('--is_train', dest='is_train', default=False, action='store_true', help='training or test mode, default: False (test mode)')
 parser.add_argument('--batch_size', dest='batch_size', default=8, type=int, help='batch size for one iteration, default: 8')
-parser.add_argument('--dataset', dest='dataset', default='raw', help='dataset name, default: raw')
+parser.add_argument('--dataset', dest='dataset', default='raw', help='dataset name, default: brain01')
 parser.add_argument('--learning_rate', dest='learning_rate', default=1e-3, type=float, help='learning rate, default: 2e-4')
 parser.add_argument('--weight_decay', dest='weight_decay', default=1e-4, type=float, help='weight decay, default: 1e-5')
-parser.add_argument('--epoch', dest='epoch', default=600, type=int, help='number of epochs, default: 600')
+parser.add_argument('--epoch', dest='epoch', default=60, type=int, help='number of epochs, default: 600')
 parser.add_argument('--print_freq', dest='print_freq', default=100, type=int, help='print frequency for loss information, default: 100')
 parser.add_argument('--load_model', dest='load_model', default=None, help='folder of saved model that you wish to continue training, (e.g., 20190411-2217), default: None')
 args = parser.parse_args()
@@ -96,10 +96,12 @@ def main():
     init_logger(log_dir)  # init logger
 
     # Initialize session
-    sess = tf.compat.v1.Session()
+    run_config = tf.ConfigProto()
+    run_config.gpu_options.allow_growth = True
+    sess = tf.Session(config=run_config)
 
     # Initialize model and solver
-    num_cross_vals = 6  # num_cross_vals have to be bigger than 3 (train dataset, validation dataset, and test dataset)
+    num_cross_vals = 6  # num_cross_vals have to bigger than 3 (train dataset, validation dataset, and test dataset)
     model = Model(args, name='UNet', input_dims=(256, 256, 1), output_dims=(256, 256, 1), log_path=log_dir)
     solver = Solver(sess, model)
 
@@ -124,8 +126,8 @@ def train(num_cross_vals, model_dir, sample_dir, log_dir, solver):
         if not os.path.isdir(log_sub_dir):
             os.makedirs(log_sub_dir)
 
-        saver = tf.compat.v1.train.Saver(max_to_keep=1)
-        tb_writer = tf.compat.v1.summary.FileWriter(log_sub_dir, graph=solver.sess.graph)
+        saver = tf.train.Saver(max_to_keep=1)
+        tb_writer = tf.summary.FileWriter(log_sub_dir, graph_def=solver.sess.graph_def)
         data = Dataset(args.dataset, num_cross_vals, model_id)
         solver.init()  # initialize model weights
         best_mae = sys.float_info.max
@@ -150,7 +152,7 @@ def train(num_cross_vals, model_dir, sample_dir, log_dir, solver):
                 mae, summary = solver.evaluate(ctImgs, preds, maskImgs, is_train=True)
                 print('Epoch: {}, MAE: {:.3f}, Best MAE: {:.3f}'.format(epoch_time, mae, best_mae))
 
-                # write to tensorboard
+                # write to tensorbaord
                 tb_writer.add_summary(summary, epoch_time)
 
                 # Save validation results
@@ -175,7 +177,7 @@ def test(num_cross_vals, model_dir, test_dir, solver):
 
         data = Dataset(args.dataset, num_cross_vals, model_id)
 
-        saver = tf.compat.v1.train.Saver(max_to_keep=1)
+        saver = tf.train.Saver(max_to_keep=1)
         solver.init()
         if restore_model(saver, solver, model_sub_dir, model_id):  # Restore models
             logger.info(' [*] Load model ID: {} SUCCESS!'.format(model_id))
