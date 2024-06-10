@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 import pickle as cpickle
 from tensorflow.python.training import moving_averages
-tf.compat.v1.disable_eager_execution()
 
 logger = logging.getLogger(__name__)  # logger
 logger.setLevel(logging.INFO)
@@ -40,21 +39,20 @@ class Model:
             # stream handler
             stream_handler = logging.StreamHandler()
             stream_handler.setFormatter(formatter)
-            # add handlers
+            # add hanlders
             logger.addHandler(file_handler)
             logger.addHandler(stream_handler)
 
     def _build_net(self, name):
-        with tf.compat.v1.variable_scope(name):
-            self.x = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, *self.input_dims], name='x')
-            self.y = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, *self.output_dims], name='y')
-            #self.mode = tf.compat.v1.placeholder(dtype=tf.bool, name='train_mode')
-            self.mode = tf.compat.v1.placeholder(dtype=tf.bool, shape=(), name='train_mode')
+        with tf.variable_scope(name):
+            self.x = tf.placeholder(dtype=tf.float32, shape=[None, *self.input_dims], name='x')
+            self.y = tf.placeholder(dtype=tf.float32, shape=[None, *self.output_dims], name='y')
+            self.mode = tf.placeholder(dtype=tf.bool, name='train_mode')
 
-            self.mae = tf.compat.v1.placeholder(dtype=tf.float32, name='MAE')
-            self.me = tf.compat.v1.placeholder(dtype=tf.float32, name='ME')
-            self.mse = tf.compat.v1.placeholder(dtype=tf.float32, name='MSE')
-            self.pcc = tf.compat.v1.placeholder(dtype=tf.float32, name='PCC')
+            self.mae = tf.placeholder(dtype=tf.float32, name='MAE')
+            self.me = tf.placeholder(dtype=tf.float32, name='ME')
+            self.mse = tf.placeholder(dtype=tf.float32, name='MSE')
+            self.pcc = tf.placeholder(dtype=tf.float32, name='PCC')
 
             # Encoding part
             # 256 x 256 x 64
@@ -122,24 +120,24 @@ class Model:
 
             self.data_loss = self.regress_loss(self.pred, self.y)
             self.reg_term = self.args.weight_decay * tf.reduce_sum(
-                [tf.nn.l2_loss(weight) for weight in tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES)])
+                [tf.nn.l2_loss(weight) for weight in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)])
             # self.reg_term = self.args.weight_decay * tf.losses.get_regularization_loss(scope=self.name)
             self.total_loss = self.data_loss + self.reg_term
 
-            optim_op = tf.compat.v1.train.AdamOptimizer(self.args.learning_rate).minimize(self.total_loss)
+            optim_op = tf.train.AdamOptimizer(self.args.learning_rate).minimize(self.total_loss)
             train_ops = [optim_op] + self.batch_norm_ops
             self.train_op = tf.group(*train_ops)
 
     def _tensorboard(self):
-        tf.compat.v1.summary.scalar('Loss/Total Loss', self.total_loss)
-        tf.compat.v1.summary.scalar('Loss/Data Loss', self.data_loss)
-        tf.compat.v1.summary.scalar('Loss/Reg Term', self.reg_term)
-        self.summary_op = tf.compat.v1.summary.merge_all()
+        tf.summary.scalar('Loss/Total Loss', self.total_loss)
+        tf.summary.scalar('Loss/Data Loss', self.data_loss)
+        tf.summary.scalar('Loss/Reg Term', self.reg_term)
+        self.summary_op = tf.summary.merge_all()
 
-        self.summary_val = tf.compat.v1.summary.merge(inputs=[tf.compat.v1.summary.scalar('Acc/MAE', self.mae),
-                                                              tf.compat.v1.summary.scalar('Acc/ME', self.me),
-                                                              tf.compat.v1.summary.scalar('Acc/RMSE', self.mse),
-                                                              tf.compat.v1.summary.scalar('Acc/PCC', self.pcc)], name='Acc')
+        self.summary_val = tf.summary.merge(inputs=[tf.summary.scalar('Acc/MAE', self.mae),
+                                                    tf.summary.scalar('Acc/ME', self.me),
+                                                    tf.summary.scalar('Acc/RMSE', self.mse),
+                                                    tf.summary.scalar('Acc/PCC', self.pcc)], name='Acc')
 
     @staticmethod
     def regress_loss(pred, y):
@@ -147,33 +145,31 @@ class Model:
 
     @staticmethod
     def last_conv2d(x, output_dim, k_h=3, k_w=3, d_h=1, d_w=1, stddev=0.02, padding='SAME', name='conv2d'):
-        with tf.compat.v1.variable_scope(name):
-            conv_weights = tf.compat.v1.get_variable(name="W",
-                                        shape=[k_h, k_w, x.get_shape()[-1], output_dim],
-                                        initializer=tf.compat.v1.truncated_normal_initializer(stddev=stddev))
-        conv_biases = tf.compat.v1.get_variable(name="b",
-                                        shape=[output_dim],
-                                        initializer=tf.compat.v1.constant_initializer(0.))
-        conv = tf.nn.conv2d(input=x, filters=conv_weights, strides=[1, d_h, d_w, 1], padding=padding)
-        #bias = tf.nn.bias_add(value=conv, bias=conv_biases)
-        bias = tf.nn.bias_add(conv, conv_biases)
+        with tf.variable_scope(name):
+            conv_weights = tf.get_variable(name="W",
+                                           shape=[k_h, k_w, x.get_shape()[-1], output_dim],
+                                           initializer=tf.truncated_normal_initializer(stddev=stddev))
+            conv_biases = tf.get_variable(name="b",
+                                          shape=[output_dim],
+                                          initializer=tf.constant_initializer(0.))
 
+            conv = tf.nn.conv2d(input=x, filter=conv_weights, strides=[1, d_h, d_w, 1], padding=padding)
+            bias = tf.nn.bias_add(value=conv, bias=conv_biases)
 
-        return bias
+            return bias
 
     def conv_layer(self, x, output_dim, k_h=3, k_w=3, d_h=1, d_w=1, stddev=0.02, padding='SAME', name='conv2d',
                    is_print=True):
-        with tf.compat.v1.variable_scope(name):
-            conv_weights = tf.compat.v1.get_variable(name="W",
+        with tf.variable_scope(name):
+            conv_weights = tf.get_variable(name="W",
                                            shape=[k_h, k_w, x.get_shape()[-1], output_dim],
-                                           initializer=tf.compat.v1.truncated_normal_initializer(stddev=stddev))
-            conv_biases = tf.compat.v1.get_variable(name="b",
+                                           initializer=tf.truncated_normal_initializer(stddev=stddev))
+            conv_biases = tf.get_variable(name="b",
                                           shape=[output_dim],
-                                          initializer=tf.compat.v1.constant_initializer(0.))
+                                          initializer=tf.constant_initializer(0.))
 
-            conv = tf.nn.conv2d(input=x, filters=conv_weights, strides=[1, d_h, d_w, 1], padding=padding)
-            #bias = tf.nn.bias_add(value=conv, bias=conv_biases)
-            bias = tf.nn.bias_add(conv, conv_biases)
+            conv = tf.nn.conv2d(input=x, filter=conv_weights, strides=[1, d_h, d_w, 1], padding=padding)
+            bias = tf.nn.bias_add(value=conv, bias=conv_biases)
             norm = self.batch_norm(bias, name='batch_norm', _ops=self.batch_norm_ops, is_train=self.mode)
             relu = tf.nn.relu(norm)
 
@@ -183,19 +179,19 @@ class Model:
         return relu
 
     def conv_layer_pretrain(self, x, name, trainable=False, is_print=True):
-        with tf.compat.v1.variable_scope(name):
+        with tf.variable_scope(name):
             w = self.get_conv_weight(name)
             b = self.get_bias(name)
-            conv_weights = tf.compat.v1.get_variable(name="W",
+            conv_weights = tf.get_variable(name="W",
                                            shape=w.shape,
-                                           initializer=tf.compat.v1.constant_initializer(w),
+                                           initializer=tf.constant_initializer(w),
                                            trainable=trainable)
-            conv_biases = tf.compat.v1.get_variable(name="b",
+            conv_biases = tf.get_variable(name="b",
                                           shape=b.shape,
-                                          initializer=tf.compat.v1.constant_initializer(b),
+                                          initializer=tf.constant_initializer(b),
                                           trainable=trainable)
 
-            conv = tf.nn.conv2d(input=x, filters=conv_weights, strides=[1, 1, 1, 1], padding='SAME')
+            conv = tf.nn.conv2d(input=x, filter=conv_weights, strides=[1, 1, 1, 1], padding='SAME')
             bias = tf.nn.bias_add(value=conv, bias=conv_biases)
             norm = self.batch_norm(bias, name='batch_norm', _ops=self.batch_norm_ops, is_train=self.mode)
             relu = tf.nn.relu(norm)
@@ -217,48 +213,50 @@ class Model:
         layer = self.pretrained_weights[layer_name]
         return layer[1]
 
-    def batch_norm(self, x, name, _ops, is_train=True):
-        tf.compat.v1.disable_eager_execution()
-        with tf.compat.v1.variable_scope(name):
+    @staticmethod
+    def batch_norm(x, name, _ops, is_train=True):
+        """Batch normalization."""
+        with tf.variable_scope(name):
             params_shape = [x.get_shape()[-1]]
-            beta = tf.compat.v1.get_variable('beta', params_shape, tf.float32,
-                                   initializer=tf.compat.v1.constant_initializer(0.0, tf.float32))
-            gamma = tf.compat.v1.get_variable('gamma', params_shape, tf.float32,
-                                    initializer=tf.compat.v1.constant_initializer(1.0, tf.float32))
 
-            if self.args.is_train:
+            beta = tf.get_variable('beta', params_shape, tf.float32,
+                                   initializer=tf.constant_initializer(0.0, tf.float32))
+            gamma = tf.get_variable('gamma', params_shape, tf.float32,
+                                    initializer=tf.constant_initializer(1.0, tf.float32))
+
+            if is_train is True:
                 mean, variance = tf.nn.moments(x, [0, 1, 2], name='moments')
-                moving_mean = tf.compat.v1.get_variable('moving_mean', params_shape, tf.float32,
-                                                        initializer=tf.compat.v1.constant_initializer(0.0, tf.float32),
-                                                        trainable=False)
-                moving_variance = tf.compat.v1.get_variable('moving_variance', params_shape, tf.float32,
-                                                            initializer=tf.compat.v1.constant_initializer(1.0, tf.float32),
-                                                            trainable=False)
+
+                moving_mean = tf.get_variable('moving_mean', params_shape, tf.float32,
+                                              initializer=tf.constant_initializer(0.0, tf.float32),
+                                              trainable=False)
+                moving_variance = tf.get_variable('moving_variance', params_shape, tf.float32,
+                                                  initializer=tf.constant_initializer(1.0, tf.float32),
+                                                  trainable=False)
+
                 _ops.append(moving_averages.assign_moving_average(moving_mean, mean, 0.9))
                 _ops.append(moving_averages.assign_moving_average(moving_variance, variance, 0.9))
-                y = tf.nn.batch_normalization(x, mean, variance, beta, gamma, 1e-5)
             else:
-                moving_mean = tf.compat.v1.get_variable('moving_mean', params_shape, tf.float32,
-                                                        initializer=tf.compat.v1.constant_initializer(0.0, tf.float32),
-                                                        trainable=False)
-                moving_variance = tf.compat.v1.get_variable('moving_variance', params_shape, tf.float32,
-                                                            initializer=tf.compat.v1.constant_initializer(1.0, tf.float32),
-                                                            trainable=False)
-                y = tf.nn.batch_normalization(x, moving_mean, moving_variance, beta, gamma, 1e-5)
-            y.set_shape(x.get_shape())
+                mean = tf.get_variable('moving_mean', params_shape, tf.float32,
+                                       initializer=tf.constant_initializer(0.0, tf.float32), trainable=False)
+                variance = tf.get_variable('moving_variance', params_shape, tf.float32,
+                                           initializer=tf.constant_initializer(1.0, tf.float32), trainable=False)
 
+            # epsilon used to be 1e-5. Maybe 0.001 solves NaN problem in deeper net.
+            y = tf.nn.batch_normalization(x, mean, variance, beta, gamma, 1e-5)
+            y.set_shape(x.get_shape())
 
             return y
 
     @staticmethod
     def max_pool_2x2(x, name='max_pool'):
-        return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
+        return tf.nn.max_pool(value=x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
 
     @staticmethod
     def unpooling2d(x, size=(2, 2), name='unpooling2d'):
-        with tf.compat.v1.name_scope(name):
+        with tf.name_scope(name):
             shape = x.get_shape().as_list()
-            output = tf.compat.v1.image.resize_nearest_neighbor(x, size=(size[0] * shape[1], size[1] * shape[2]))
+            output = tf.image.resize_nearest_neighbor(x, size=(size[0] * shape[1], size[1] * shape[2]))
         return output
 
     @staticmethod
@@ -268,7 +266,7 @@ class Model:
     @staticmethod
     def show_all_variables(is_train=True):
         total_count = 0
-        for idx, op in enumerate(tf.compat.v1.trainable_variables()):
+        for idx, op in enumerate(tf.trainable_variables()):
             shape = op.get_shape()
             count = np.prod(shape)
             if is_train:
